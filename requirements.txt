@@ -1,0 +1,29 @@
+# FallacyScoreboard dependencies.
+#
+# NOTE: ffmpeg (with ffprobe) is a required SYSTEM binary, not a pip package.
+# The media upload pipeline locates it via shutil.which("ffmpeg"); install with:
+#   Windows (winget): winget install Gyan.FFmpeg
+#   macOS (Homebrew): brew install ffmpeg
+#   Debian/Ubuntu:    sudo apt-get install ffmpeg
+#
+# Media transcription itself runs through the WhisperX entry already listed
+# below, so no extra ASG dependency is required.
+
+yt_dlp
+ollama
+demjson3
+plotly
+wordcloud
+textblob
+Pillow==9.5.0
+torch==2.0.0+cu118
+torchaudio==2.0.0+cu118
+git+https://github.com/m-bain/whisperx.git
+moviepy
+google-auth==2.14.0
+google-auth-oauthlib==0.5.3
+google-auth-httplib2==0.1.0
+google-api-python-client==2.53.0
+# Test-suite for the media transcription background task (tests/).
+pytest>=7.0
+-f https://download.pytorch.org/whl/torch_stable.html

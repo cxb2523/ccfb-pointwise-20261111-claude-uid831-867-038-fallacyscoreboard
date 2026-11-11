@@ -36,7 +36,18 @@ Click the image above to watch a demonstration of FallacyScoreboard in action!
     pip install -r requirements.txt
     ```
 
-4. **Install ImageMagick**:
+4. **Install ffmpeg** (required by the media upload pipeline; located via
+   `shutil.which`, so it must be on `PATH`):
+    ```bash
+    # Windows
+    winget install Gyan.FFmpeg
+    # macOS
+    brew install ffmpeg
+    # Debian/Ubuntu
+    sudo apt-get install ffmpeg
+    ```
+
+5. **Install ImageMagick**:
    FallacyScoreboard uses MoviePy, which requires ImageMagick. Make sure to install ImageMagick and set the path in the script:
    ```python
    change_settings({"IMAGEMAGICK_BINARY": r"path/to/your/ImageMagick-7.1.1-Q16-HDRI/magick.exe"})
@@ -67,6 +78,52 @@ Click the image above to watch a demonstration of FallacyScoreboard in action!
    OLLAMA_HOST = 'http://localhost:11434'
    OLLAMA_MODEL = 'llama3.1'
    ```
+
+3. **Queue a media upload for transcription** (mp4/mov/mkv/mp3/wav):
+   ```python
+   from upload_worker import UploadWorker
+
+   worker = UploadWorker(
+       store_path="Files/jobs/job_store.json",  # persistent, poll-safe job store
+       work_dir="Files/media_work",             # per-job scratch + checkpoints
+   )
+   job_id = worker.enqueue_media("interview.mp4")
+   worker.run_pending()                          # or worker.start() for a loop
+
+   status = worker.get_status(job_id)            # safe to poll / refresh
+   print(status["status"], status["result"]["transcript_txt"])
+   ```
+
+   Plain-text uploads keep using the original scoring path unchanged:
+   ```python
+   job_id = worker.enqueue_text("0.0-2.0 SPEAKER_00: transcribed dialogue ...")
+   ```
+
+### Media pipeline behavior
+
+- **Probe & normalise**: ffmpeg/ffprobe are located with `shutil.which` (a
+  missing binary raises with an install hint). The audio track is normalised
+  to 16 kHz mono PCM wav. A container without an audio track fails with
+  `NoAudioTrackError`; pure-music / long-silence audio fails with
+  `NoSpeechDetectedError` — empty text is never sent to the scorer, so a
+  media upload can never silently produce a zero fallacy score.
+- **Segmented transcription**: the wav is split on silence and each segment is
+  recognised independently. Segment-local timestamps are mapped back onto the
+  original audio timeline; the transcript is written in the same
+  `"{start}-{end} SPEAKER_00: {text}"` line format consumed by
+  `llm.detect_fallacies`, so every detected fallacy remains locatable to the
+  second (`start_clock`/`end_clock` in `transcript.json`).
+- **Checkpoint & resume**: checkpoints are keyed by the source file SHA-256
+  plus the segment index. A worker retry re-runs only the failed segments;
+  jobs are requeued automatically until the attempt limit is reached.
+- **Durable job state**: all jobs live in an atomically written JSON job
+  store. Polling or refreshing never makes a task disappear, and on worker
+  restart jobs left `running` are requeued while orphaned wav/segment files
+  are reaped via per-job `worker.lock` files.
+- **Cleanup guarantees**: the normalised wav and segment scratch directory are
+  removed on both normal completion and exception paths; `reap_orphans()`
+  handles files left by crashed/restarted processes. Checkpoints and
+  transcripts are retained for resume and auditing.
 
 ## Output
 
